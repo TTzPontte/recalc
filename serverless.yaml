@@ -1,4 +1,4 @@
-service: aws-python-http-api
+service: pontte-calculator-recalc
 frameworkVersion: 2
 
 provider:
@@ -7,9 +7,9 @@ provider:
   lambdaHashingVersion: '20201221'
 
 functions:
-  hello:
-    handler: handler.hello
+  calculate:
+    handler: src/__main__.handle
     events:
       - httpApi:
           path: /
-          method: get
+          method: post

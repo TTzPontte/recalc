@@ -1,5 +1,7 @@
 {
   config.files.gitignore.pattern."events" = true;
+
+  config.files.json."events/sac.json".httpMethod = "POST";
   config.files.json."events/sac.json".body = builtins.toJSON {
     loanCalculationType = "SAC";
     contractDate = "2021-11-16";

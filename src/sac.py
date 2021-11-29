@@ -1,67 +1,65 @@
-from typing import NewType
+from typing import NewType, Dict, List, Any
 from decimal import Decimal
-from datetime import date, timedelta
-from calendar import monthrange
+from .fin_consts import ZERO, ONE
+from .fin_types import Money, Rate, AmortizationMethod
+from .fin_date import (
+    Date, Day, Days, Months, Month,
+    month_length, add_months, next_month, previous_month)
 
-Money = Decimal
-Rate = Decimal
-Day = NewType("Day", int)
-Days = NewType("Days", int)
-Months = NewType("Months", int)
-
-ZERO = Decimal(0)
-ONE = Decimal(1)
-
-# TODO review financial terms
+from dataclasses import dataclass, field
 
 
-def month_length(base: Date) -> Days:
-    monthrange(base.year, base.month)[1]
+
+@dataclass
+class Installment:
+    number: int
+    due_date: Date
+    amortization: Money = field(default=ZERO)
+    interest: Money = field(default=ZERO)
+    debit_balance: Money = field(default=ZERO)
 
 
-def add_months(months: Months, base: date) -> date:
-    assert int(months) == months, "Months must be integer"
-    assert all(hasattr(base, attr) for attr in "year month day".split()]), '''
-        base must be a calendar.date or at least have year month and day
-    '''
-    years = int(months/12)
-    year = base.year + years
-    months_this_year = months - (years * 12)
-    month = base.month + months_this_year
-    total_days = month_length(date(year, month, 1))
-    # TODO validate this BUSINESS logic
-    day = base.day if base.day <= total_days else total_days
-    return date(year, month, day)
-
-
-def next_month(base: date) -> date:
-    return add_months(-1, base)
-
-
-def previous_month(base: date) -> date:
-    return add_months(-1, base)
+@dataclass
+class Contract:
+    custody_fee: Money
+    amortization: Money
+    contract_date: Date
+    dfi: Rate
+    mip: Rate
+    grace_period: Months
+    installments_skip: List[Months]
+    interest_rate: Rate
+    amortization_method: AmortizationMethod
+    loan_period: Months
+    month_wont_pay: Month
+    payday: Day
+    request_loan_amount: Money
+    warranty: Money
+    installments: List[Installment]
+    accumulated: Money = field(default=ZERO)
 
 
 def calculate_first_interest(
         interest_rate: Rate, current_amount: Money,
-        first_payment: date, period: Months) -> Money:
+        first_payment: Date, period: Days) -> Money:
     assert interest_rate > 0, "Interest rate must be > 0 %"
-    assert period > 0, "Period must be > 0 month"
-    contract_month_length = Decimal(month_length(first_payment))
+    # TODO 0 period is same day or next month?
+    assert period >= 0, "Period must be > 0 month"
+    contract_month_length = month_length(first_payment)
     # TODO this is the wrong var name and wrong math operation
-    daily_interest_rate = period / contract_month_length
+    daily_interest_rate = Decimal(period / contract_month_length)
     period_interest_rate = ((ONE + interest_rate) ** daily_interest_rate) - ONE
     return Money(current_amount * period_interest_rate)
 
 
-def adjust_first_installment_date(
+def first_installment(
         interest_rate: Rate, request_loan_amount: Money,
-        contract_date: date, payday: Day) -> Decimal:
+        contract_date: Date, payday: Day) -> Installment:
     assert interest_rate > 0, "Interest rate must be > 0 %"
     assert request_loan_amount > 0, "Requested amout must be > 0 %"
     assert int(payday) == payday, "Payday must be integer"
     assert payday in range(1, 32), "Payday must be between day 1 and 31"
-    first_payment = contract_date.replace(day=payment_day)
+    first_payment = contract_date.replace(day=payday)
     delta_due_date_period = (contract_date - first_payment).days
     first_interest = calculate_first_interest(
             interest_rate, request_loan_amount,
@@ -73,8 +71,24 @@ def adjust_first_installment_date(
             debit_balance=request_loan_amount + first_interest)
 
 
+def calculate_interest_price(interest_rate: Rate, current_amount: Money, period: Months) -> Money:
+    assert interest_rate > 0, "Interest rate should be > 0"
+    assert current_amount > 0, "Current amount should be > 0"
+    assert period > 0, "Period should be > 0"
+    # TODO change this variable name
+    arg1 = (ONE + interest_rate) ** period * interest_rate
+    arg2 = ((ONE + interest_rate) ** period) - ONE
+    return current_amount * arg1 / arg2
+
+
+def calculate_interest(interest_rate: Rate, current_amount: Money) -> Money:
+    assert interest_rate > 0, "Interest rate should be > 0"
+    assert current_amount > 0, "Current amount should be > 0"
+    return current_amount * interest_rate
+
+
 def create_installment(contract: Contract, last: Installment) -> Installment:
-    due_date = next_months(last.due_date)
+    due_date = next_month(last.due_date)
     number = last.number + 1
     installment = Installment(number=number, due_date=due_date)
     skip = due_date.month == contract.month_wont_pay or (
@@ -86,14 +100,15 @@ def create_installment(contract: Contract, last: Installment) -> Installment:
         else:
             contract.amortization = (last.debit_balance /
                     (contract.loan_period - contract.grace_period))
-    installment.interest = calculate_interest(contract, last.debit_balance)
+    installment.interest = calculate_interest(contract.interest_rate, last.debit_balance)
     # TODO validate this BUSINESS logic
     installment.amortization = contract.amortization 
     if contract.amortization:
         installment.debit_balance = last.debit_balance - contract.amortization
-        installment.mip = contract.mip_rate * last.debit_balance
         # TODO validate this BUSINESS logic
-        installment.dfi = contract.dfi_rate * contract.warranty
+        installment.mip = contract.mip * last.debit_balance
+        # TODO validate this BUSINESS logic
+        installment.dfi = contract.dfi * contract.warranty
         installment.custody_fee = contract.custody_fee
         installment.amount = (
                 contract.accumulated
@@ -104,19 +119,26 @@ def create_installment(contract: Contract, last: Installment) -> Installment:
                 + installment.amortization)
         if skip:
             # TODO validate this BUSINESS logic
-            installment.due_date = add_months(1, last.due_date)
+            installment.due_date = next_month(last.due_date)
             value = calculate_interest_price(contract.interest_rate, installment.amount,
                     contract.loan_period - number)
-            contract.accumulated(value + contract.accumulated)
+            contract.accumulated = value + contract.accumulated
             installment.amount = ZERO
     else:
         installment.debit_balance = last.debit_balance + installment.interest_rate
     return installment
 
 
-def calculate_interest_price(interest_rate: Rate, current_amount: Decimal, period: int) -> Money:
-    # TODO change this variable name
-    arg1 = (ONE + interest_rate) ** period * contract.interest_rate
-    arg2 = ((ONE + interest_rate) ** period) - ONE
-    return current_amount * arg1 / arg2
+def calculate(contract: Contract) -> Contract:
+    last = first_installment(
+        contract.interest_rate,
+        contract.request_loan_amount,
+        contract.contract_date,
+        contract.payday)
+    contract.installments = [ last ]
+    for i in range(2, contract.loan_period + 1):
+        last = create_installment(contract, last)
+        contract.installments.append(last)
+    return contract
+
 
