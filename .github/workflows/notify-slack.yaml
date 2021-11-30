@@ -1,0 +1,28 @@
+jobs:
+  notify-slack:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install SSH Key
+        uses: shimataro/ssh-key-action@3c9b0fc6f2d223b8450b02a0445f526350fc73e0
+        with:
+          key: ${{ secrets.GH_ACTIONS_SSH_KEY }}
+          known_hosts: unnecessary
+      - uses: actions/checkout@v2.4.0
+        with:
+          fetch-depth: 0
+      - uses: cachix/install-nix-action@v15
+        with:
+          extra_nix_config: |
+            access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
+          nix_path: channel:nixos-unstable
+      - env:
+          GIPHY_TOKEN: ${{ secrets.GIPHY_TOKEN }}
+          SLACK_BOT_CHANNEL: ${{ secrets.SLACK_BOT_CHANNEL }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN_GIT_ACTION }}
+        name: Build
+        run: nix develop --command gh-actions-notify-slack-build
+"on":
+  push:
+    branches:
+      - master
+      - staging

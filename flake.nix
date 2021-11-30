@@ -1,5 +1,5 @@
 {
-  description = "Dev Environment";
+  description = "Calculator at Pontte";
 
   inputs.dsf.url = "github:cruel-intentions/devshell-files";
   inputs.gha.url = "github:cruel-intentions/gh-actions";
