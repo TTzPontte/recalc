@@ -366,11 +366,11 @@
         "gha": "gha_2"
       },
       "locked": {
-        "lastModified": 1638234424,
-        "narHash": "sha256-1L2D6/x1/c5Cjx+iBaAqlKsepb0jdDBHL8IZQoB1ANo=",
+        "lastModified": 1638240569,
+        "narHash": "sha256-dykOfqjPDBAcVbgeT7C1bEOI2T1epOQhT82fcAAXGPQ=",
         "ref": "master",
-        "rev": "739160a13379c771ca1cbad61695609df2ae9f33",
-        "revCount": 88,
+        "rev": "7487fff654fec0c36fd45d6aa797ddc37bcccd0f",
+        "revCount": 89,
         "type": "git",
         "url": "ssh://git@github.com/pontte/pontix.git"
       },
